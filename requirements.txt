@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+asyncpg
+python-jose
+passlib[bcrypt]
+bleach
+starlette-limiter
+pytest
+httpx

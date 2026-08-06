@@ -1,0 +1,23 @@
+users
+├── id (PK)
+├── email (UNIQUE)
+├── password_hash
+├── created_at
+├── updated_at
+
+ideas
+├── id (PK)
+├── user_id (FK -> users.id)
+├── title
+├── description
+├── submitted_at
+├── validation_score
+├── validation_feedback
+├── status
+
+mvp_blueprints
+├── id (PK)
+├── idea_id (FK -> ideas.id)
+├── features
+├── timeline
+├── created_at

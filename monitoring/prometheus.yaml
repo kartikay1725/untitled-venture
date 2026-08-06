@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mvpgenie-api
+  labels:
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: mvpgenie-api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
