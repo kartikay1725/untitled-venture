@@ -1,50 +1,59 @@
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
 
-class RegisterRequest(BaseModel):
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class TokenData(BaseModel):
+    user_id: Optional[UUID] = None
+
+class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
 
-class LoginRequest(BaseModel):
+class UserOut(BaseModel):
+    id: UUID
     email: EmailStr
-    password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+    class Config:
+        orm_mode = True
 
-class IdeaRequest(BaseModel):
-    title: str = Field(..., min_length=3)
-    description: str = Field(..., min_length=10)
-
-    @validator("description")
-    def sanitize_description(cls, v):
-        import bleach
-        return bleach.clean(v)
-
-class IdeaResponse(BaseModel):
-    id: UUID
-    title: str
+class IdeaCreate(BaseModel):
     description: str
-    submitted_at: datetime
-    validation_score: Optional[float]
-    validation_feedback: Optional[Dict[str, Any]]
-    status: str
+    industry_tags: List[str]
 
-class ValidationResponse(BaseModel):
-    validation_score: Optional[float]
-    validation_feedback: Optional[Dict[str, Any]]
-    status: str
-
-class BlueprintRequest(BaseModel):
-    idea_id: UUID
-    scope: str
-
-class BlueprintResponse(BaseModel):
+class IdeaOut(BaseModel):
     id: UUID
-    features: Dict[str, Any]
-    timeline: Dict[str, Any]
-    created_at: datetime
+    description: str
+    industry_tags: List[str]
+    validation_score: Optional[float]
+    validation_text: Optional[str]
+    recommended_features: Optional[List[str]]
+
+    class Config:
+        orm_mode = True
+
+class ValidationResult(BaseModel):
+    validationScore: float
+    validationText: str
+    recommendedFeatures: List[str]
+
+class MVPCreate(BaseModel):
+    ideaId: UUID
+    features: List[str]
+
+class MVPOut(BaseModel):
+    mvpId: UUID
+    status: str
+    generatedCode: Optional[str] = None
+
+class DeploymentCreate(BaseModel):
+    mvpId: UUID
+    target: str
+
+class DeploymentOut(BaseModel):
+    deploymentId: UUID
+    status: str
+    url: Optional[str] = None

@@ -1,62 +1,51 @@
-import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from starlette_limiter import Limiter, _rate_limit_exceeded_handler
-from starlette_limiter.depends import RateLimiter
-from .config import settings
-from .auth import router as auth_router
-from .ideas import router as ideas_router
-from .blueprints import router as blueprints_router
-from .database import engine
-from sqlmodel import SQLModel
+from starlette.middleware.sessions import SessionMiddleware
+import uvicorn
+from app.routes import auth, ideas, mvp, deploy
+from app.config import settings
+from app.database import engine, Base
+from app.utils.security_headers import add_security_headers
+from app.utils.rate_limiter import limiter, rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+import logging
 
-# Setup logging
-logging.basicConfig(filename=settings.log_file, level=getattr(logging, settings.log_level), format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger(__name__)
+app = FastAPI(title="IdeaForge API", version="1.0.0")
 
-app = FastAPI(title=settings.app_name)
-
-# Security headers middleware
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response: Response = await call_next(request)
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
-        return response
-
-app.add_middleware(SecurityHeadersMiddleware)
-
-# CORS
+# Middleware
+app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# HTTPS redirect
-app.add_middleware(HTTPSRedirectMiddleware)
-
-# Rate limiting
-limiter = Limiter(key_func=lambda request: request.client.host, default_limits=[settings.rate_limit])
+app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
+app.add_middleware(BaseHTTPMiddleware, dispatch=add_security_headers)
 app.state.limiter = limiter
-app.add_exception_handler(429, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
-# Include routers
-app.include_router(auth_router)
-app.include_router(ideas_router)
-app.include_router(blueprints_router)
+# Routes
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(ideas.router, prefix="/api/ideas", tags=["ideas"])
+app.include_router(mvp.router, prefix="/api/mvp", tags=["mvp"])
+app.include_router(deploy.router, prefix="/api/deploy", tags=["deploy"])
 
-# Database initialization
+# Startup event
 @app.on_event("startup")
 async def on_startup():
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    logger.info("Database tables created")
+        await conn.run_sync(Base.metadata.create_all)
+
+# Error handlers
+@app.exception_handler(Exception)
+async def generic_exception_handler(request, exc):
+    logging.exception("Unhandled exception")
+    return JSONResponse(status_code=500, content={"detail":"Internal Server Error"})
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

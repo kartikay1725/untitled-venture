@@ -1,18 +1,11 @@
-import random
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.repository.idea_repo import IdeaRepository
+import asyncio
+from typing import List, Tuple
 
 class ValidationService:
-    def __init__(self, session: AsyncSession):
-        self.repo = IdeaRepository(session)
-
-    async def validate(self, idea_id: UUID):
-        idea = await self.repo.get(idea_id)
-        if not idea:
-            raise ValueError("Idea not found")
-        # Simple heuristic: longer description => higher score
-        score = min(1.0, len(idea.description.split()) / 200)
-        feedback = {"length": len(idea.description.split()), "score": score}
-        await self.repo.update_validation(idea, score, feedback)
-        return score, feedback
+    async def validate(self, description: str, tags: List[str]) -> Tuple[float, str, List[str]]:
+        await asyncio.sleep(0.1)
+        word_count = len(description.split())
+        score = min(1.0, max(0.0, word_count / 200))
+        text = f"Score based on description length ({word_count} words)."
+        features = [f"Feature {i+1}" for i in range(min(3, len(tags)))]
+        return score, text, features

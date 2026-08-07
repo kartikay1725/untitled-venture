@@ -1,13 +1,15 @@
-from pydantic import BaseModel, Field
-from uuid import UUID
+from typing import List, Optional
+from pydantic import BaseModel, Field, constr
 
-class IdeaCreate(BaseModel):
-    title: str = Field(..., min_length=5)
-    description: str = Field(..., min_length=20)
+class IdeaCreateRequest(BaseModel):
+    description: constr(min_length=1, max_length=5000)
+    industry_tags: List[constr(min_length=1, max_length=50)]
 
 class IdeaResponse(BaseModel):
-    id: UUID
-    title: str
-    description: str
-    submitted_at: str
-    status: str
+    ideaId: str
+    validationScore: Optional[float]
+    validationText: Optional[str]
+    recommendedFeatures: List[str]
+
+    class Config:
+        orm_mode = True

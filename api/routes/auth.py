@@ -1,38 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from api.schemas import UserCreate, Token
+from api.services.auth_service import AuthService
+from api.utils.auth import get_current_user, create_access_token
+from api.db import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.orm import SessionLocal
-from database.models import User
-from api.schemas.auth import RegisterRequest, LoginRequest
-from passlib.context import CryptContext
-import jwt
-import os
-from datetime import datetime, timedelta
 
-router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = os.getenv("JWT_SECRET", "supersecret")
-ALGORITHM = "HS256"
+router = APIRouter(prefix="/auth", tags=["auth"])
 
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
+@router.post("/register", response_model=Token)
+async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    service = AuthService(db)
+    user = await service.register(user_in)
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer"}
 
-@router.post("/register")
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(User.__table__.select().where(User.email == req.email))
-    if result.scalar():
-        raise HTTPException(status_code=400, detail="Email already registered")
-    hashed = pwd_context.hash(req.password)
-    new_user = User(email=req.email, password_hash=hashed)
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    return {"id": str(new_user.id), "email": new_user.email}
-
-@router.post("/login")
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(User.__table__.select().where(User.email == req.email))
-    user = result.scalar()
-    if not user or not pwd_context.verify(req.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    to_encode
+@router.post("/login", response_model=Token)
+async def login(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    service = AuthService(db)
+    token = await service.login(user_in.email, user_in.password)
+    return {"access_token": token, "token_type": "bearer"}

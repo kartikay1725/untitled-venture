@@ -1,16 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List
 
 class IdeaCreate(BaseModel):
-    title: str = Field(..., max_length=200)
+    user_id: str
     description: str
+    industry_tags: List[str] = Field(default_factory=list)
 
-class IdeaOut(BaseModel):
-    id: str
-    title: str
-    description: str
-    validation_score: Optional[float]
-    validation_feedback: Optional[dict]
-    status: str
-    class Config:
-        orm_mode = True
+class IdeaResponse(BaseModel):
+    idea_id: str
+    validation_score: float
+    validation_text: str
+    recommended_features: List[str]

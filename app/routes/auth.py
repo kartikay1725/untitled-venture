@@ -1,42 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
-from uuid import UUID
-from app.services.user_service import UserService
-from app.schemas import AuthRegister, Token
-from app.config import settings
-from app.database import get_session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from app.database import async_session
+from app.schemas import UserCreate, Token
+from app.models import User
+from app.utils.security import get_password_hash, create_access_token, verify_password
+import uuid
+import logging
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
-
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> UUID:
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return UUID(user_id)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @router.post("/register", response_model=Token)
-async def register(data: AuthRegister, session=Depends(get_session)):
-    service = UserService(session)
-    try:
-        user_id = await service.register(data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    token = jwt.encode({"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)}, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-    return Token(access_token=token)
+async def register(user_in: UserCreate):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.email == user_in.email))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user = User(
+            id=uuid.uuid4(),
+            email=user_in.email,
+            hashed_password=get_password_hash(user_in.password)
+        )
+        session.add(user)
+        await session.commit()
+        access_token = create_access_token(data={"sub": str(user.id)})
+        return {"access_token": access_token, "token_type":"bearer"}
 
 @router.post("/login", response_model=Token)
-async def login(form: OAuth2PasswordRequestForm = Depends(), session=Depends(get_session)):
-    service = UserService(session)
-    try:
-        user_id = await service.authenticate(form.username, form.password)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    token = jwt.encode({"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)}, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-    return Token(access_token=token)
+async def login(user_in: UserCreate):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.email == user_in.email))
+        user = result.scalars().first()
+        if not user or not verify_password(user_in.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        access_token = create_access_token(data={"sub": str(user.id)})
+        return {"access_token": access_token, "token_type":"bearer"}

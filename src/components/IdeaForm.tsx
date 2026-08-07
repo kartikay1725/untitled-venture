@@ -1,77 +1,98 @@
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { api } from '@/utils/api';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useIdeaValidation } from '../hooks/useIdeaValidation';
+import { Spinner } from './LoadingSpinner';
 
 const schema = z.object({
-  title: z.string().min(5, 'Title too short'),
-  description: z.string().min(20, 'Description too short'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  industry_tags: z.array(z.string().min(1)).min(1, 'Select at least one tag'),
 });
 
-type FormData = z.infer<typeof schema>;
+type FormValues = z.infer<typeof schema>;
 
-export default function IdeaForm({ onSuccess }: { onSuccess: (id: string) => void }) {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+export const IdeaForm: React.FC = () => {
+  const [submitted, setSubmitted] = useState(false);
+  const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
-  const [error, setError] = useState<string | null>(null);
+  const { mutateAsync, isLoading, error } = useIdeaValidation();
 
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = async (data: FormValues) => {
     try {
-      const res = await api.post('/api/ideas', data);
-      onSuccess(res.data.id);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Submission failed');
+      await mutateAsync({
+        description: data.description,
+        industry_tags: data.industry_tags,
+      });
+      setSubmitted(true);
+    } catch (e) {
+      // error handled by hook
     }
   };
 
   return (
-    <motion.form
-      onSubmit={handleSubmit(onSubmit)}
-      className="bg-white dark:bg-gray-800 p-6 rounded shadow"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      className="max-w-2xl mx-auto p-8 bg-var(--color-surface) rounded-xl shadow-md"
     >
-      <h2 className="text-lg font-semibold mb-4">Submit Your Idea</h2>
-      {error && <p className="text-red-600 mb-4">{error}</p>}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1">Title</label>
-        <input
-          {...register('title')}
-          className="w-full border rounded p-2"
-          aria-invalid={errors.title ? 'true' : 'false'}
-          aria-describedby="title-error"
-        />
-        {errors.title && (
-          <p id="title-error" className="text-red-600 text-sm">
-            {errors.title.message}
+      <h2 className="text-2xl font-semibold mb-6 text-var(--color-text)" >Submit Your Business Idea</h2>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="mb-4">
+          <label htmlFor="description" className="block text-sm font-medium mb-1 text-var(--color-text)" >Idea Description</label>
+          <textarea
+            id="description"
+            {...register('description')}
+            className="w-full border border-var(--color-border) rounded p-2 focus:outline-none focus:ring-2 focus:ring-var(--color-primary)"
+            rows={4}
+            aria-invalid={errors.description ? 'true' : 'false'}
+            aria-describedby="description-error"
+          />
+          {errors.description && (
+            <p id="description-error" className="text-sm text-var(--color-error) mt-1">
+              {errors.description.message}
+            </p>
+          )}
+        </div>
+        <div className="mb-4">
+          <label htmlFor="industry_tags" className="block text-sm font-medium mb-1 text-var(--color-text)" >Industry Tags</label>
+          <input
+            id="industry_tags"
+            type="text"
+            placeholder="e.g. fintech, healthtech"
+            {...register('industry_tags')}
+            className="w-full border border-var(--color-border) rounded p-2 focus:outline-none focus:ring-2 focus:ring-var(--color-primary)"
+            aria-invalid={errors.industry_tags ? 'true' : 'false'}
+            aria-describedby="industry_tags-error"
+          />
+          {errors.industry_tags && (
+            <p id="industry_tags-error" className="text-sm text-var(--color-error) mt-1">
+              {errors.industry_tags.message}
+            </p>
+          )}
+        </div>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full py-2 px-4 bg-var(--color-primary) text-white rounded hover:scale-102 transition-transform duration-200 ease-in-out"
+        >
+          {isLoading ? <Spinner /> : 'Validate Idea'}
+        </button>
+        {error && (
+          <p className="mt-4 text-sm text-var(--color-error)" role="alert">
+            {error.message}
           </p>
         )}
-      </div>
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1">Description</label>
-        <textarea
-          {...register('description')}
-          className="w-full border rounded p-2"
-          rows={5}
-          aria-invalid={errors.description ? 'true' : 'false'}
-          aria-describedby="description-error"
-        />
-        {errors.description && (
-          <p id="description-error" className="text-red-600 text-sm">
-            {errors.description.message}
+        {submitted && (
+          <p className="mt-4 text-sm text-var(--color-success)" role="status">
+            Validation successful! Check your email for the score.
           </p>
         )}
-      </div>
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded disabled:opacity-50"
-      >
-        {isSubmitting ? 'Submitting...' : 'Submit'}
-      </button>
-    </motion.form>
+      </form>
+    </motion.div>
   );
-}
+};
