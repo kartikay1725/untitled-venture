@@ -1,30 +1,36 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List, Dict
+from uuid import UUID
 from datetime import datetime
 
-class RegisterRequest(BaseModel):
+class AuthRequest(BaseModel):
     email: EmailStr
     password: str
 
-class LoginRequest(BaseModel):
+class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
-class TokenResponse(BaseModel):
+class AuthResponse(BaseModel):
     token: str
     user: dict
 
-class IdeaCreateRequest(BaseModel):
-    description: str
+class IdeaCreate(BaseModel):
+    description: str = Field(..., min_length=10)
+
+class IdeaResponse(BaseModel):
+    idea_id: UUID
+    validation_score: Optional[float]
+    validated_at: Optional[datetime]
 
 class IdeaValidationResponse(BaseModel):
-    idea_id: str
     validation_score: float
     validated_at: datetime
 
 class MVPGenerateRequest(BaseModel):
-    idea_id: str
+    idea_id: UUID
 
 class MVPGenerateResponse(BaseModel):
-    mvp_id: str
+    mvp_id: UUID
     pdf_url: str
     download_url: str

@@ -1,0 +1,1 @@
+@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\nhtml {\n  scroll-behavior: smooth;\n}

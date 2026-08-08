@@ -1,0 +1,1 @@
+fastapi==0.111.0\nuvicorn==0.30.1\nsqlalchemy==2.0.30\nasyncpg==0.29.0\npydantic==2.7.1\npython-jose==3.3.0\npasslib[bcrypt]==1.7.4\nboto3==1.34.0\npython-multipart==0.0.9\npytest==8.2.2\nhttpx==0.27.0

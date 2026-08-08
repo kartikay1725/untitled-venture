@@ -1,0 +1,1 @@
+import axios from 'axios';\n\nconst api = axios.create({\n  baseURL: process.env.NEXT_PUBLIC_API_URL,\n  timeout: 5000\n});\n\nexport default api;

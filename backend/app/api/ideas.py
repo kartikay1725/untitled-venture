@@ -1,38 +1,47 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.models import Idea, User
-from app.utils.settings import Settings
-from app.db import get_db, get_current_user
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from uuid import uuid4
+from typing import Optional
+from ..db import get_db
+from ..models import Idea
+from sqlalchemy.orm import Session
+import uuid
+from ..utils.security import decode_token
 from datetime import datetime
 
 router = APIRouter()
-settings = Settings()
 
 class IdeaRequest(BaseModel):
     description: str
 
 class IdeaResponse(BaseModel):
-    idea_id: str
-    validation_score: float
-    validated_at: datetime
+    idea_id: uuid.UUID
+    validation_score: Optional[float]
+    validated_at: Optional[datetime]
 
-@router.post("", response_model=IdeaResponse)
-async def submit_idea(req: IdeaRequest, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    # Dummy validation logic: score = len(description) % 100
-    score = min(100, max(0, len(req.description) % 100))
-    idea = Idea(user_id=user.id, description=req.description, validation_score=score, validated_at=datetime.utcnow())
+# Simple token extractor
+async def get_current_user(token: str = Depends(lambda request: request.headers.get("Authorization", "").split(" ")[1]), db: Session = Depends(get_db)):
+    payload = decode_token(token)
+    if not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return payload["sub"]
+
+@router.post("/", response_model=IdeaResponse)
+def submit_idea(payload: IdeaRequest, db: Session = Depends(get_db), user_id: uuid.UUID = Depends(get_current_user)):
+    idea = Idea(id=uuid.uuid4(), user_id=user_id, description=payload.description)
     db.add(idea)
-    await db.commit()
-    await db.refresh(idea)
-    return IdeaResponse(idea_id=str(idea.id), validation_score=idea.validation_score, validated_at=idea.validated_at)
+    db.commit()
+    db.refresh(idea)
+    # Mock validation logic
+    score = 0.75 if "app" in payload.description.lower() else 0.65
+    idea.validation_score = score
+    idea.validated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(idea)
+    return IdeaResponse(idea_id=idea.id, validation_score=idea.validation_score, validated_at=idea.validated_at)
 
-@router.get("{idea_id}/validation", response_model=IdeaResponse)
-async def get_validation(idea_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    result = await db.execute(select(Idea).where(Idea.id == idea_id, Idea.user_id == user.id))
-    idea = result.scalar_one_or_none()
+@router.get("/{idea_id}/validation", response_model=IdeaResponse)
+def get_validation(idea_id: uuid.UUID, db: Session = Depends(get_db), user_id: uuid.UUID = Depends(get_current_user)):
+    idea = db.query(Idea).filter(Idea.id == idea_id, Idea.user_id == user_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-    return IdeaResponse(idea_id=str(idea.id), validation_score=idea.validation_score, validated_at=idea.validated_at)
+    return IdeaResponse(idea_id=idea.id, validation_score=idea.validation_score, validated_at=idea.validated_at)

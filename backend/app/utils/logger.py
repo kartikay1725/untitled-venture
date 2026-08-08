@@ -1,9 +1,6 @@
 import logging
-from logging.handlers import RotatingFileHandler
 
-logger = logging.getLogger("ideaforge")
-logger.setLevel(logging.INFO)
-handler = RotatingFileHandler("app.log", maxBytes=10_000_000, backupCount=3)
-formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+def get_logger(name: str) -> logging.Logger:
+    return logging.getLogger(name)

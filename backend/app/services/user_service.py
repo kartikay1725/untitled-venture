@@ -1,12 +1,28 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import HTTPException
 import uuid
-from app.models import User
+import bcrypt
+from backend.app.db.models import User
+from backend.app.db.database import AsyncSessionLocal
 
-async def get_user_by_id(session: AsyncSession, user_id: uuid.UUID) -> User:
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+class UserService:
+    async def get_by_email(self, email: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                User.__table__.select().where(User.email == email)
+            )
+            return result.scalar_one_or_none()
+
+    async def get_by_id(self, user_id: uuid.UUID):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                User.__table__.select().where(User.id == user_id)
+            )
+            return result.scalar_one_or_none()
+
+    async def create_user(self, email: str, password: str):
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        user = User(email=email, password_hash=hashed)
+        async with AsyncSessionLocal() as session:
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        return user

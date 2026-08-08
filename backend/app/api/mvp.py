@@ -1,50 +1,80 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.models import Idea, MVPBlueprint, MVPPackage
-from app.utils.settings import Settings
-from app.db import get_db, get_current_user
-from app.services.mvp_generation import generate_mvp
-from app.services.file_storage import upload_file
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from uuid import uuid4
+from typing import Optional
+from ..db import get_db
+from ..models import Idea, MVPBlueprint, MVPPackage
+from sqlalchemy.orm import Session
+import uuid
+from ..utils.security import decode_token
+from datetime import datetime
+import boto3
+import os
+import json
 
 router = APIRouter()
-settings = Settings()
 
 class MVPRequest(BaseModel):
-    idea_id: str
+    idea_id: uuid.UUID
 
 class MVPResponse(BaseModel):
-    mvp_id: str
+    mvp_id: uuid.UUID
     pdf_url: str
     download_url: str
 
-@router.post("", response_model=MVPResponse)
-async def create_mvp(req: MVPRequest, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    result = await db.execute(select(Idea).where(Idea.id == req.idea_id, Idea.user_id == user.id))
-    idea = result.scalar_one_or_none()
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found")
-    if idea.validation_score < 70:
-        raise HTTPException(status_code=400, detail="Idea not viable")
-    blueprint = generate_mvp(idea.description)
-    mvp = MVPBlueprint(idea_id=idea.id, wireframes=blueprint['wireframes'], feature_list=blueprint['features'], tech_stack=blueprint['tech_stack'], timeline=blueprint['timeline'])
-    db.add(mvp)
-    await db.commit()
-    await db.refresh(mvp)
-    pdf_bytes = blueprint['pdf']
-    pdf_url = await upload_file(f"{mvp.id}.pdf", pdf_bytes, "pdf")
-    mvp.pdf_url = pdf_url
-    await db.commit()
-    await db.refresh(mvp)
-    return MVPResponse(mvp_id=str(mvp.id), pdf_url=pdf_url, download_url=f"/api/mvp/{mvp.id}/download")
+async def get_current_user(token: str = Depends(lambda request: request.headers.get("Authorization", "").split(" ")[1]), db: Session = Depends(get_db)):
+    payload = decode_token(token)
+    if not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return payload["sub"]
 
-@router.get("{mvp_id}/download")
-async def download_mvp(mvp_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    result = await db.execute(select(MVPBlueprint).where(MVPBlueprint.id == mvp_id))
-    mvp = result.scalar_one_or_none()
-    if not mvp:
-        raise HTTPException(status_code=404, detail="MVP not found")
-    # For simplicity, return the PDF URL; real implementation would stream ZIP
-    return {"zip_url": mvp.pdf_url}
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION", "us-east-1")
+)
+bucket = os.getenv("S3_BUCKET_NAME")
+
+def upload_file_to_s3(file_bytes: bytes, key: str) -> str:
+    s3_client.put_object(Bucket=bucket, Key=key, Body=file_bytes, ContentType="application/pdf")
+    return f"https://{bucket}.s3.{os.getenv('AWS_REGION','us-east-1')}.amazonaws.com/{key}"
+
+@router.post("/", response_model=MVPResponse)
+def generate_mvp(payload: MVPRequest, db: Session = Depends(get_db), user_id: uuid.UUID = Depends(get_current_user)):
+    idea = db.query(Idea).filter(Idea.id == payload.idea_id, Idea.user_id == user_id).first()
+    if not idea or not idea.validation_score or idea.validation_score < 0.7:
+        raise HTTPException(status_code=400, detail="Idea not validated or below threshold")
+    # Mock blueprint generation
+    blueprint = MVPBlueprint(
+        id=uuid.uuid4(),
+        idea_id=idea.id,
+        wireframes={"screen1": "wireframe1.png"},
+        feature_list=["auth", "idea_submission"],
+        tech_stack=["Python", "FastAPI", "React"],
+        timeline={"setup": "1 week", "dev": "2 weeks"},
+        pdf_url=""
+    )
+    db.add(blueprint)
+    db.commit()
+    db.refresh(blueprint)
+    # Generate PDF placeholder
+    pdf_bytes = b"%PDF-1.4\n%Mock PDF content"
+    pdf_key = f"pdfs/{blueprint.id}.pdf"
+    pdf_url = upload_file_to_s3(pdf_bytes, pdf_key)
+    blueprint.pdf_url = pdf_url
+    db.commit()
+    # Generate ZIP placeholder
+    zip_bytes = b"PK\x03\x04Mock ZIP content"
+    zip_key = f"packages/{blueprint.id}.zip"
+    zip_url = upload_file_to_s3(zip_bytes, zip_key)
+    package = MVPPackage(id=uuid.uuid4(), mvp_id=blueprint.id, zip_url=zip_url)
+    db.add(package)
+    db.commit()
+    return MVPResponse(mvp_id=blueprint.id, pdf_url=pdf_url, download_url=zip_url)
+
+@router.get("/{mvp_id}/download")
+def download_mvp(mvp_id: uuid.UUID, db: Session = Depends(get_db), user_id: uuid.UUID = Depends(get_current_user)):
+    package = db.query(MVPPackage).join(MVPBlueprint).filter(MVPPackage.mvp_id == mvp_id, MVPBlueprint.idea_id == Idea.id, Idea.user_id == user_id).first()
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return {"zip_url": package.zip_url}

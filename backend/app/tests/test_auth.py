@@ -1,29 +1,38 @@
 import pytest
-from httpx import AsyncClient
-from app.main import app
-from app.db import async_session, Base, engine
+from fastapi.testclient import TestClient
+from ..main import app
+from ..db import get_db
+from ..models import User
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(DATABASE_URL)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="module")
-async def async_test_client():
-    async with async_session() as session:
-        async with session.begin():
-            await session.run_sync(Base.metadata.create_all)
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
-    async with async_session() as session:
-        async with session.begin():
-            await session.run_sync(Base.metadata.drop_all)
+def client():
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+    app.dependency_overrides[get_db] = override_get_db
+    from ..models import Base
+    Base.metadata.create_all(bind=engine)
+    with TestClient(app) as c:
+        yield c
+    Base.metadata.drop_all(bind=engine)
 
-@pytest.mark.asyncio
-async def test_register_and_login(async_test_client):
-    payload = {"email": "test@example.com", "password": "StrongPass123"}
-    resp = await async_test_client.post("/api/auth/register", json=payload)
-    assert resp.status_code == 200
+def test_register_and_login(client):
+    resp = client.post("/api/auth/register", json={"email":"test@example.com","password":"Password123!"})
+    assert resp.status_code == 201
     data = resp.json()
     assert "token" in data
     assert data["user"]["email"] == "test@example.com"
 
-    login_resp = await async_test_client.post("/api/auth/login", json=payload)
-    assert login_resp.status_code == 200
-    login_data = login_resp.json()
-    assert login_data["token"] == data["token"]
+    resp = client.post("/api/auth/login", json={"email":"test@example.com","password":"Password123!"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "token" in data

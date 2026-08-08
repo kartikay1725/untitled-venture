@@ -1,0 +1,1 @@
+export default function Footer() {\n  return (\n    <footer className="bg-light-surface dark:bg-dark-surface text-sm text-center py-4">\n      © 2026 IdeaForge. All rights reserved.\n    </footer>\n  );\n}
