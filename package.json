@@ -1,1 +1,1 @@
-{\n  \"name\": \"ideaforge-backend\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"uvicorn app.main:app --reload\",\n    \"start\": \"uvicorn app.main:app --host 0.0.0.0 --port 8000\"\n  },\n  \"dependencies\": {\n    \"next\": \"^13.5.0\"\n  }\n}
+{\n  \"name\": \"ideaforge-backend\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"uvicorn app.main:app --reload\",\n    \"start\": \"uvicorn app.main:app --host 0.0.0.0 --port 8000\"\n  },\n  \"dependencies\": {\n    \"next\": \"latest\"\n  }\n}
