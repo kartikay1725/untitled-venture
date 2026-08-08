@@ -1,0 +1,1 @@
+import React from 'react';\n\nexport default function Home() {\n  return (\n    <div>\n      <h1>IdeaForge API</h1>\n      <p>FastAPI backend is running.</p>\n    </div>\n  );\n}\n
