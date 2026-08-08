@@ -1,1 +1,1 @@
-Could you provide the exact OpenAI API key and deployment service API key values, or should we use environment variables for those during local development?
+Which AI model/API do you plan to use for idea validation and MVP generation, and do you have any specific integration constraints (e.g., rate limits, cost budgets)?
